@@ -1,108 +1,112 @@
-## About
+# Image Captioning System
 
-### Overview
+A working web app that generates natural-language captions for images: upload a photo and get a description back, powered by a pretrained vision-encoder/decoder model (ViT + GPT-2) served through a FastAPI backend, with a simple HTML/JS frontend.
 
-This project is an end‑to‑end **Image Captioning System** that automatically generates natural‑language descriptions for images. It combines a convolutional neural network (CNN) to extract visual features with a recurrent neural network (RNN) to generate captions word by word.
+The repo also keeps the original training notebook (VGG16 encoder + LSTM decoder trained from scratch on Flickr8k) under [`notebooks/`](notebooks/) as a reference pipeline — see [About](#about-the-original-notebook) below.
+
+---
+
+## Running the app
+
+### Requirements
+
+- Python 3.10+
+- ~2GB free disk space (model weights are downloaded on first run and cached)
+
+### Setup
+
+```bash
+cd backend
+python -m venv .venv
+# Windows
+.venv\Scripts\activate
+# macOS/Linux
+source .venv/bin/activate
+
+pip install -r requirements.txt
+```
+
+### Run
+
+```bash
+cd backend
+uvicorn main:app --reload
+```
+
+Then open **http://127.0.0.1:8000** in your browser. Upload an image and click **Generate Caption**.
+
+The first request downloads the pretrained model (`nlpconnect/vit-gpt2-image-captioning`, ~1GB) from Hugging Face and caches it locally — subsequent runs are fast.
+
+### API
+
+- `GET /` — serves the frontend.
+- `POST /api/caption` — multipart form upload (`file`), returns `{"caption": "..."}`.
+- `GET /api/health` — health check.
+
+### Project structure
+
+```
+backend/     FastAPI app (main.py) + requirements.txt
+frontend/    Static HTML/CSS/JS UI, served by the backend
+notebooks/   Original Flickr8k training notebook (VGG16 + LSTM from scratch)
+```
+
+---
+
+## About the original notebook
+
+`notebooks/image_captioning.ipynb` is an end-to-end example of training an image captioning model **from scratch**: a convolutional neural network (CNN) extracts visual features and a recurrent neural network (RNN) generates captions word by word.
 
 The core idea:
 
-- Use a **pre‑trained VGG16** model as an **encoder** to convert an input image into a fixed‑length feature vector.
-- Use an **Embedding + LSTM‑based decoder** to generate a textual description conditioned on that visual feature vector.
-
-The implementation lives in the Jupyter notebook `image_captioning.ipynb`.
-
----
+- Use a **pre-trained VGG16** model as an **encoder** to convert an input image into a fixed-length feature vector.
+- Use an **Embedding + LSTM-based decoder** to generate a textual description conditioned on that visual feature vector.
 
 ### Key Features
 
 - **CNN–RNN architecture**
-  - Encoder: VGG16 pre‑trained on ImageNet, using the second‑last fully‑connected layer (4096‑D) as the image feature vector.
+  - Encoder: VGG16 pre-trained on ImageNet, using the second-last fully-connected layer (4096-D) as the image feature vector.
   - Decoder: Embedding layer → LSTM → Dense layers to predict the next word in the caption.
 
 - **Sequence modeling**
   - Captions are tokenized and converted to integer sequences.
-  - The model is trained to predict the next word given:
-    - The image feature vector, and
-    - The prefix of the caption seen so far.
+  - The model is trained to predict the next word given the image feature vector and the prefix of the caption seen so far.
 
 - **Custom data pipeline**
-  - Loads images from a directory.
-  - Loads a captions file and builds a mapping from `image_id → [captions...]`.
+  - Loads images from a directory and a captions file, builds `image_id → [captions...]`.
   - Cleans and normalizes text (lowercasing, filtering tokens, adding `startseq` / `endseq` tokens).
   - Uses a Keras `Tokenizer` to build the vocabulary and integer sequences.
   - Implements a Python generator to stream batches to the model (avoids loading all sequences into memory).
 
 - **Evaluation**
-  - Evaluates the trained model using **BLEU‑1** and **BLEU‑2** scores on a held‑out test split.
-  - Achieves reasonable BLEU scores for a tutorial‑scale model:
-    - BLEU‑1 around `0.52`
-    - BLEU‑2 around `0.29` (values will vary depending on preprocessing and data).
+  - Evaluates the trained model using **BLEU-1** and **BLEU-2** scores on a held-out test split.
+  - Achieves reasonable BLEU scores for a tutorial-scale model (BLEU-1 ~0.52, BLEU-2 ~0.29; values vary depending on preprocessing and data).
 
 - **Inference utilities**
-  - Converts predicted token indices back to words.
   - Greedy decoding: generates captions one word at a time until `endseq` or `max_length` is reached.
-  - Includes a helper to visualize an image alongside:
-    - Its ground‑truth captions, and
-    - The model’s predicted caption.
+  - Includes a helper to visualize an image alongside its ground-truth captions and the model's predicted caption.
 
----
-
-### Technologies Used
+### Technologies Used (notebook)
 
 - **Language**: Python
 - **Deep Learning**: TensorFlow / Keras
-- **Computer Vision**: VGG16 (ImageNet pre‑trained)
-- **NLP / Evaluation**:
-  - Keras `Tokenizer`, `Embedding`, `LSTM`
-  - `nltk.translate.bleu_score` for BLEU metrics
-- **Utilities**:
-  - NumPy, pickle
-  - Pillow (PIL) for image loading
-  - Matplotlib for visualization
-  - tqdm for progress bars
-
----
+- **Computer Vision**: VGG16 (ImageNet pre-trained)
+- **NLP / Evaluation**: Keras `Tokenizer`, `Embedding`, `LSTM`, `nltk.translate.bleu_score`
+- **Utilities**: NumPy, pickle, Pillow, Matplotlib, tqdm
 
 ### How It Works (High Level)
 
-1. **Feature Extraction**
-   - Each image is resized to 224×224 and passed through VGG16.
-   - The penultimate (4096‑D) layer is taken as the image’s feature representation.
-   - Features are stored in a dictionary keyed by `image_id` and serialized to disk (`features.pkl`).
+1. **Feature Extraction** — each image is resized to 224×224 and passed through VGG16; the penultimate (4096-D) layer is the feature representation, cached to `features.pkl`.
+2. **Caption Preprocessing** — captions are lowercased, cleaned, and wrapped with `startseq`/`endseq`.
+3. **Tokenization & Sequence Building** — a Keras `Tokenizer` builds the vocabulary; `(image, partial_sequence) → next_word` pairs feed a custom generator.
+4. **Model Training** — encoder and decoder branches merge and pass through Dense layers to predict a probability distribution over the vocabulary, trained with categorical cross-entropy.
+5. **Caption Generation** — starting from `startseq`, the model iteratively predicts the next word until `endseq` or max length.
 
-2. **Caption Preprocessing**
-   - A captions text file is parsed to build `mapping[image_id] = [caption1, ..., captionN]`.
-   - Captions are:
-     - Lowercased
-     - Cleaned (non‑alphabetic characters and extra spaces removed)
-     - Wrapped with `startseq` and `endseq`.
-
-3. **Tokenization & Sequence Building**
-   - A Keras `Tokenizer` is fit on all cleaned captions.
-   - For each caption, all `(image, partial_sequence) → next_word` training pairs are generated.
-   - These pairs feed the model via a custom generator that yields:
-     - `{"image": X1, "text": X2}` → image features and input word sequences
-     - `y` → one‑hot encoded next words.
-
-4. **Model Training**
-   - The encoder branch processes image features.
-   - The decoder branch processes text sequences.
-   - Their outputs are merged and passed through Dense layers to produce a probability distribution over the vocabulary.
-   - The model is trained with categorical cross‑entropy.
-
-5. **Caption Generation**
-   - At inference time, a caption is generated by:
-     - Starting with `in_text = "startseq"`.
-     - Iteratively predicting the most probable next word.
-     - Appending each predicted word until `endseq` or a maximum length is reached.
-
----
+Requires the [Flickr8k dataset](https://www.kaggle.com/datasets/adityajn105/flickr8k) (images + captions file) to run, and was originally authored/run in Google Colab (paths reference `/content/drive/...`).
 
 ### Possible Extensions
 
-- Replace VGG16 with a more modern encoder (e.g. ResNet, EfficientNet, or a vision‑language model).
+- Replace VGG16 with a more modern encoder (e.g. ResNet, EfficientNet, or a vision-language model).
 - Implement **beam search** decoding instead of greedy search for better captions.
 - Add more robust text cleaning and handling of rare words.
-- Expose the trained model via a web API (e.g. FastAPI/Flask) and build a frontend for interactive captioning.
-
----
+- Fine-tune the deployed web app's model on a custom dataset.
