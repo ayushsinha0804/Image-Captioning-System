@@ -7,12 +7,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
-from transformers import AutoTokenizer, VisionEncoderDecoderModel, ViTImageProcessor
+from transformers import BlipForConditionalGeneration, BlipProcessor
 
 FRONTEND_DIR = "../frontend"
-MODEL_NAME = "nlpconnect/vit-gpt2-image-captioning"
-MAX_LENGTH = 16
-NUM_BEAMS = 4
+MODEL_NAME = "Salesforce/blip-image-captioning-large"
+MAX_LENGTH = 30
+NUM_BEAMS = 5
 
 app = FastAPI(title="Image Captioning System")
 
@@ -26,13 +26,12 @@ app.add_middleware(
 
 @lru_cache(maxsize=1)
 def get_captioner():
-    model = VisionEncoderDecoderModel.from_pretrained(MODEL_NAME)
-    processor = ViTImageProcessor.from_pretrained(MODEL_NAME)
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+    processor = BlipProcessor.from_pretrained(MODEL_NAME)
+    model = BlipForConditionalGeneration.from_pretrained(MODEL_NAME)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
     model.eval()
-    return model, processor, tokenizer, device
+    return model, processor, device
 
 
 @app.on_event("startup")
@@ -41,13 +40,13 @@ def load_model():
 
 
 def generate_caption(image: Image.Image) -> str:
-    model, processor, tokenizer, device = get_captioner()
-    pixel_values = processor(images=[image], return_tensors="pt").pixel_values.to(device)
+    model, processor, device = get_captioner()
+    inputs = processor(images=image, return_tensors="pt").to(device)
     with torch.no_grad():
         output_ids = model.generate(
-            pixel_values, max_length=MAX_LENGTH, num_beams=NUM_BEAMS
+            **inputs, max_length=MAX_LENGTH, num_beams=NUM_BEAMS
         )
-    caption = tokenizer.decode(output_ids[0], skip_special_tokens=True)
+    caption = processor.decode(output_ids[0], skip_special_tokens=True)
     return caption.strip()
 
 

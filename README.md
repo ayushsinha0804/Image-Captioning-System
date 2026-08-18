@@ -1,6 +1,6 @@
 # Image Captioning System
 
-A working web app that generates natural-language captions for images: upload a photo and get a description back, powered by a pretrained vision-encoder/decoder model (ViT + GPT-2) served through a FastAPI backend, with a simple HTML/JS frontend.
+A working web app that generates natural-language captions for images: upload a photo and get a description back, powered by BLIP (Salesforce/blip-image-captioning-large), a pretrained vision-language model, served through a FastAPI backend with a simple HTML/JS frontend.
 
 The repo also keeps the original training notebook (VGG16 encoder + LSTM decoder trained from scratch on Flickr8k) under [`notebooks/`](notebooks/) as a reference pipeline — see [About](#about-the-original-notebook) below.
 
@@ -11,7 +11,7 @@ The repo also keeps the original training notebook (VGG16 encoder + LSTM decoder
 ### Requirements
 
 - Python 3.10+
-- ~2GB free disk space (model weights are downloaded on first run and cached)
+- ~3GB free disk space (model weights are downloaded on first run and cached)
 
 ### Setup
 
@@ -35,7 +35,7 @@ uvicorn main:app --reload
 
 Then open **http://127.0.0.1:8000** in your browser. Upload an image and click **Generate Caption**.
 
-The first request downloads the pretrained model (`nlpconnect/vit-gpt2-image-captioning`, ~1GB) from Hugging Face and caches it locally — subsequent runs are fast.
+The first request downloads the pretrained model (`Salesforce/blip-image-captioning-large`, ~1.9GB) from Hugging Face and caches it locally — subsequent runs are fast.
 
 ### API
 
